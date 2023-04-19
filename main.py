@@ -1,10 +1,12 @@
 from collections import Counter
+
+import PolynomialRegression as PolynomialRegression
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
-from sklearn import metrics
+from sklearn import linear_model, metrics
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, PolynomialFeatures
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -25,19 +27,6 @@ def listToString(s):
     return str1
 
 
-def Amir(ages):
-    newAges = []
-    try:
-        for i in range(len(ages)):
-            if ages[i][-1] == '+':
-                age_list = list(ages[i])
-                age_list.pop()
-                newAges.append(listToString(age_list))
-        return newAges
-    except:
-        print("Warning")
-
-
 def Feature_Encoder(X, cols):
     for c in cols:
         lbl = LabelEncoder()
@@ -46,13 +35,9 @@ def Feature_Encoder(X, cols):
     return X
 
 
-def preProcessing(FilePath):
-    df = pd.read_csv(FilePath)
-    X = df.iloc[:, :-1]
-    Y = df['Average User Rating']
-
+def preProcessing(X):
     # removing + symbol in Age Rating column
-    X["Age Rating"] = Amir(X["Age Rating"])
+    X['Age Rating'] = X['Age Rating'].map(lambda x: x.rstrip('+').lstrip(' '))
 
     # split month column from date
     X['Original Release Date Month'] = pd.to_datetime(X['Original Release Date']).dt.month
@@ -84,36 +69,16 @@ def preProcessing(FilePath):
     # dropping these 2 columns as the have the same values in every row
     X = X.drop(['Games', 'Strategy'], axis=1)
 
-    X.to_csv(r'newGameDataset.csv', index=False)
+    return X
 
-    # correlation
-    corrData = pd.DataFrame(X)
-    corrData['Average User Rating'] = df['Average User Rating']
 
-    corr = X.corr()
-    top_feature = corr.index[abs(corr['Average User Rating']) >= 0.1]
+def correlation(corrData):
+    corr = corrData.corr()
+    top_feature = corr.index[abs(corr['Average User Rating']) >= 0.02]
     plt.subplots(figsize=(12, 8))
-    top_corr = X[top_feature].corr()
+    top_corr = corrData[top_feature].corr()
     sns.heatmap(top_corr, annot=True)
     plt.show()
-    # print(df.isna().sum())
-    return
-    df['DataFrame Column'] = df['DataFrame Column'].replace(np.nan, 0)
-
-    # print(df['Subtitle'])
-    print(df.isna().sum())
-    return
-
-    print(df.isna().sum())
-
-    print(data["Age Rating"])
-    corr = data.corr()
-    top_feature = corr.index[abs(corr['Average User Rating']) > 0.02]
-    plt.subplots(figsize=(12, 8))
-    top_corr = data[top_feature].corr()
-    sns.heatmap(top_corr, annot=True)
-    plt.show()
-
     return
 
 
@@ -152,7 +117,69 @@ def splitMultipleData(df, column, spliter, numberOfColumns):
     return df_final
 
 
-#  X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.20, shuffle=True)
+def linearReggressionModel(X, Y):
+    model = linear_model.LinearRegression()
+    X = np.expand_dims(X, axis=1)
+    Y = np.expand_dims(Y, axis=1)
+    model.fit(X, Y)  # Fit method is used for fitting your training data into the model
+    prediction = model.predict(X)
+    plt.scatter(X, Y)
+    plt.xlabel('SAT', fontsize=20)
+    plt.ylabel('Average User Rating', fontsize=20)
+    plt.plot(X, prediction, color='red', linewidth=3)
+    plt.show()
+    print('Co-efficient of linear regression', model.coef_)
+    print('Intercept of linear regression model', model.intercept_)
+    print('Mean Square Error', metrics.mean_squared_error(Y, prediction))
+    return
+
+
+def polynomialRegression(X_train, Y_train, X_test, Y_test):
+    poly_features = PolynomialFeatures(degree=4)
+    # transforms the existing features to higher degree features.
+    X_train_poly = poly_features.fit_transform(X_train)
+
+    # fit the transformed features to Linear Regression
+    poly_model = linear_model.LinearRegression()
+    poly_model.fit(X_train_poly, Y_train)
+
+    # predicting on training data-set
+    y_train_predicted = poly_model.predict(X_train_poly)
+    ypred = poly_model.predict(poly_features.transform(X_test))
+
+    # predicting on test data-set
+    print('Co-efficient of linear regression', poly_model.coef_)
+    print('Intercept of linear regression model', poly_model.intercept_)
+    print('Mean Square Error', metrics.mean_squared_error(Y_test, ypred))
+    return
+
 
 np.seterr(invalid='ignore')
-preProcessing('games-regression-dataset.csv')
+FilePath = 'games-regression-dataset.csv'
+df = pd.read_csv(FilePath)
+X = df.iloc[:, :-1]
+Y = df['Average User Rating']
+
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.20, shuffle=True)
+
+X_train = preProcessing(X_train)
+X_test = preProcessing(X_test)
+
+correlationDataSet = X_train.copy()
+correlationDataSet['Average User Rating'] = Y_train
+correlation(correlationDataSet)
+
+linearReggressionModel(X_train['Current Version Release Date Year'], Y_train)
+
+new_x_train = pd.DataFrame()
+new_x_train['Current Version Release Date Year'] = X_train['Current Version Release Date Year']
+new_x_train['Original Release Date Year'] = X_train['Original Release Date Year']
+
+new_x_test = pd.DataFrame()
+new_x_test['Current Version Release Date Year'] = X_test['Current Version Release Date Year']
+new_x_test['Original Release Date Year'] = X_test['Original Release Date Year']
+
+polynomialRegression(new_x_train, Y_train, new_x_test, Y_test)
+
+# X.to_csv(r'newGameDataset.csv', index=False)
+# X_test = preProcessing(X_test)
