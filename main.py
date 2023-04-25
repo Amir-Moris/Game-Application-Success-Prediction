@@ -3,16 +3,18 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from sklearn.linear_model import Lasso
 from pandas.plotting import scatter_matrix
-from sklearn import linear_model, metrics
+from sklearn import linear_model, metrics, pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, PolynomialFeatures
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from collections import Counter
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
+import seaborn as sns
 
 
 def Feature_Encoder(X, cols):
@@ -127,7 +129,6 @@ def linearRegressionModel(X_train, Y_train, X_test, Y_test, first_column_name):
     print('r2_score', r2_score(Y_test, Y_Predict_test))
     return
 
-
 def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list):
     poly_features = PolynomialFeatures(degree=degree)
     # transforms the existing features to higher degree features.
@@ -218,7 +219,7 @@ np.seterr(invalid='ignore')
 FilePath = 'games-regression-dataset.csv'
 df = pd.read_csv(FilePath)
 
-# data_analysis(df)
+# # data_analysis(df)
 df = extract_feature(df, 15)
 
 X = df.drop(['Average User Rating'], axis=1)
