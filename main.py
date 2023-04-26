@@ -1,20 +1,15 @@
-import PolynomialRegression as PolynomialRegression
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.linear_model import Lasso
 from pandas.plotting import scatter_matrix
-from sklearn import linear_model, metrics, pipeline
+from sklearn import linear_model, metrics
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import r2_score
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler, PolynomialFeatures
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.preprocessing import StandardScaler
-from collections import Counter
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
-import seaborn as sns
+from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
+from sklearn.model_selection import train_test_split
+
 
 
 def Feature_Encoder(X, cols):
@@ -123,11 +118,13 @@ def linearRegressionModel(X_train, Y_train, X_test, Y_test, first_column_name):
     plt.xlabel(first_column_name, fontsize=20)
     plt.ylabel('Average User Rating', fontsize=20)
     plt.plot(X_test, Y_Predict_test, color='red', linewidth=3)
+    plt.title('Linear Regression')
     plt.show()
 
-    print('Mean Square Error', metrics.mean_squared_error(Y_test, Y_Predict_test))
-    print('r2_score', r2_score(Y_test, Y_Predict_test))
+    print('Mean Square Error For Linear Regression : ', metrics.mean_squared_error(Y_test, Y_Predict_test))
+    print('R2 score For Linear Regression  : ', r2_score(Y_test, Y_Predict_test))
     return
+
 
 def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list):
     poly_features = PolynomialFeatures(degree=degree)
@@ -147,8 +144,8 @@ def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list)
     # calculate and print metrics
     mse = metrics.mean_squared_error(Y_test, ypred_test)
     r2 = r2_score(Y_test, ypred_test)
-    print('Mean Square Error:', mse)
-    print('r2_score:', r2)
+    print('Mean Square Error For Polynomial Regression : ', mse)
+    print('R2 score For Polynomial Regression : ', r2)
 
     # plot the regression line
     for col in columns_list:
@@ -161,6 +158,35 @@ def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list)
     plt.show()
 
     return
+
+
+def LassoRegressionModel(Alpha, X_train, X_test, Y_train, Y_test, feature_names):
+    # create a Lasso model
+    lasso = Lasso(alpha=Alpha)
+    X_train = np.array(X_train)
+    X_test = np.array(X_test)
+    Y_train = np.array(Y_train)
+    Y_test = np.array(Y_test)
+    # fit the model to the data
+    lasso.fit(X_train, Y_train)
+    y_pred = lasso.predict(X_test)
+    mse = metrics.mean_squared_error(Y_test, y_pred)
+    r2 = metrics.r2_score(Y_test, y_pred)
+    print('Mean Square Error For Lasso Regression : ', mse)
+    print('R2 score For Lasso Regression : ', r2)
+
+    # plot predicted vs true values for multiple features
+    fig, axs = plt.subplots(1, len(feature_names), figsize=(15, 10))
+    plt.title('Lasso Regression')
+
+    for i, ax in enumerate(axs.flat):
+        ax.scatter(X_test[:, i], Y_test, color='blue', label='True values')
+        ax.scatter(X_test[:, i], y_pred, color='red', label='Predicted values')
+        ax.set_xlabel(feature_names[i])
+        ax.set_ylabel('Target')
+        ax.legend()
+
+    plt.show()
 
 
 def data_analysis(df):
@@ -219,7 +245,7 @@ np.seterr(invalid='ignore')
 FilePath = 'games-regression-dataset.csv'
 df = pd.read_csv(FilePath)
 
-# # data_analysis(df)
+# data_analysis(df)
 df = extract_feature(df, 15)
 
 X = df.drop(['Average User Rating'], axis=1)
@@ -235,11 +261,14 @@ top_features = correlation(correlationDataSet)
 X_train = X_train[top_features]
 X_test = X_test[top_features]
 
-linearRegressionModel(X_train['Current Version Release Date Year'], Y_train, X_test['Current Version Release Date Year'], Y_test, 'u2022')
+linearRegressionModel(X_train['Current Version Release Date Year'], Y_train,
+                      X_test['Current Version Release Date Year'], Y_test, 'u2022')
 
 columns_list = ['Original Release Date Year', 'Current Version Release Date Year', 'u2022']
 X_train = X_train[columns_list]
 X_test = X_test[columns_list]
 polynomialRegression(X_train.iloc[:, :], Y_train, X_test.iloc[:, :], Y_test, 3, columns_list)
+
+LassoRegressionModel(0.001, X_train, X_test, Y_train, Y_test, columns_list)
 
 X.to_csv(r'newGameDataset.csv', index=False)
