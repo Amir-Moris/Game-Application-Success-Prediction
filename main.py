@@ -2,14 +2,17 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.linear_model import Lasso
+from sklearn.linear_model import Lasso, LinearRegression, LogisticRegression
 from pandas.plotting import scatter_matrix
-from sklearn import linear_model, metrics
+from sklearn import linear_model, metrics, pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import r2_score
-from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
-from sklearn.model_selection import train_test_split
-
+from sklearn.metrics import r2_score, accuracy_score
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, PolynomialFeatures, StandardScaler
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.feature_selection import RFE
+from collections import Counter
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import GridSearchCV
 
 
 def Feature_Encoder(X, cols):
@@ -25,16 +28,16 @@ def preProcessing(X):
     X['Age Rating'] = X['Age Rating'].map(lambda x: x.rstrip('+').lstrip(' '))
 
     # split month column from date
-    X['Original Release Date Month'] = pd.to_datetime(X['Original Release Date']).dt.month
-    X['Current Version Release Date Month'] = pd.to_datetime(X['Current Version Release Date']).dt.month
+    X['Original Release Date Month'] = pd.to_datetime(X['Original Release Date'], format='%d/%m/%Y').dt.month
+    X['Current Version Release Date Month'] = pd.to_datetime(X['Current Version Release Date'], format='%d/%m/%Y').dt.month
 
     # split year column from date
-    X['Original Release Date Year'] = pd.to_datetime(X['Original Release Date']).dt.year
-    X['Current Version Release Date Year'] = pd.to_datetime(X['Current Version Release Date']).dt.year
+    X['Original Release Date Year'] = pd.to_datetime(X['Original Release Date'], format='%d/%m/%Y').dt.year
+    X['Current Version Release Date Year'] = pd.to_datetime(X['Current Version Release Date'], format='%d/%m/%Y').dt.year
 
     # split day column from date
-    X['Original Release Date Day'] = pd.to_datetime(X['Original Release Date']).dt.day
-    X['Current Version Release Date Day'] = pd.to_datetime(X['Current Version Release Date']).dt.day
+    X['Original Release Date Day'] = pd.to_datetime(X['Original Release Date'], format='%d/%m/%Y').dt.day
+    X['Current Version Release Date Day'] = pd.to_datetime(X['Current Version Release Date'], format='%d/%m/%Y').dt.day
 
     # state reason for each column
     X = X.drop(
@@ -58,7 +61,9 @@ def preProcessing(X):
 
 def correlation(corrData):
     corr = corrData.corr()
-    top_feature = corr.index[abs(corr['Average User Rating']) >= 0.05]
+    print(corrData['Rate'])
+    return
+    top_feature = corr.index[abs(corr['Rate']) >= 0.05]
     plt.subplots(figsize=(12, 8))
     top_corr = corrData[top_feature].corr()
     sns.heatmap(top_corr, annot=True)
@@ -109,7 +114,7 @@ def linearRegressionModel(X_train, Y_train, X_test, Y_test, first_column_name):
     Y_train = np.expand_dims(Y_train, axis=1)
     X_test = np.expand_dims(X_test, axis=1)
     Y_test = np.expand_dims(Y_test, axis=1)
-
+  
     model.fit(X_train, Y_train)  # Fit method is used for fitting your training data into the model
     Y_Predict_test = model.predict(X_test)
     Y_Predict_train = model.predict(X_train)
@@ -121,10 +126,9 @@ def linearRegressionModel(X_train, Y_train, X_test, Y_test, first_column_name):
     plt.title('Linear Regression')
     plt.show()
 
-    print('Mean Square Error For Linear Regression : ', metrics.mean_squared_error(Y_test, Y_Predict_test))
-    print('R2 score For Linear Regression  : ', r2_score(Y_test, Y_Predict_test))
+    print('Mean Square Error: ', metrics.mean_squared_error(Y_test, Y_Predict_test))
+    print('R2 score: ', r2_score(Y_test, Y_Predict_test))
     return
-
 
 def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list):
     poly_features = PolynomialFeatures(degree=degree)
@@ -144,8 +148,8 @@ def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list)
     # calculate and print metrics
     mse = metrics.mean_squared_error(Y_test, ypred_test)
     r2 = r2_score(Y_test, ypred_test)
-    print('Mean Square Error For Polynomial Regression : ', mse)
-    print('R2 score For Polynomial Regression : ', r2)
+    print('Mean Square Error: ', mse)
+    print('R2 score: ', r2)
 
     # plot the regression line
     for col in columns_list:
@@ -156,9 +160,7 @@ def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list)
     plt.xlabel('Features')
     plt.ylabel('Average Rate')
     plt.show()
-
     return
-
 
 def LassoRegressionModel(Alpha, X_train, X_test, Y_train, Y_test, feature_names):
     # create a Lasso model
@@ -172,8 +174,8 @@ def LassoRegressionModel(Alpha, X_train, X_test, Y_train, Y_test, feature_names)
     y_pred = lasso.predict(X_test)
     mse = metrics.mean_squared_error(Y_test, y_pred)
     r2 = metrics.r2_score(Y_test, y_pred)
-    print('Mean Square Error For Lasso Regression : ', mse)
-    print('R2 score For Lasso Regression : ', r2)
+    print('Mean Square Error: ', mse)
+    print('R2 score: ', r2)
 
     # plot predicted vs true values for multiple features
     fig, axs = plt.subplots(1, len(feature_names), figsize=(15, 10))
@@ -187,8 +189,7 @@ def LassoRegressionModel(Alpha, X_train, X_test, Y_train, Y_test, feature_names)
         ax.legend()
 
     plt.show()
-
-
+  
 def data_analysis(df):
     print(df.head())
 
@@ -240,35 +241,55 @@ def extract_feature(df, no_max_features):
     df = pd.concat([df_features, df], axis=1)
     return df
 
+def DecisionTreeModel(X_train, Y_train, X_test, Y_test):
+    # Define the parameter grid
+    param_grid = {
+        'criterion': ['gini', 'entropy'],
+        'max_depth': [None, 5, 10, 15, 20],
+        'min_samples_split': [2, 3, 4, 5, 10],
+        'min_samples_leaf': [1, 2, 3, 4, 5],
+        'max_features': [None, 'sqrt', 'log2']
+    }
 
+    # Create a decision tree classifier
+    dt_classifier = DecisionTreeClassifier(random_state=42)
+
+    # Create a grid search object
+    grid_search = GridSearchCV(dt_classifier, param_grid=param_grid, cv=5)
+
+    # Fit the grid search object to the data
+    grid_search.fit(X_train, Y_train)
+    dt_classifier.fit(X_train, Y_train)
+    # Print the best hyperparameters
+    best_params = grid_search.best_params_
+    print("Best hyperparameters:", best_params)
+    # Predict on the test data using the best model
+    best_model = grid_search.best_estimator_
+    y_pred = best_model.predict(X_test)
+    # Evaluate the best model
+    print("Decision Tree Classifier accuracy:", accuracy_score(Y_test, y_pred))
+    
+    
 np.seterr(invalid='ignore')
-FilePath = 'games-regression-dataset.csv'
+FilePath = 'games-classification-dataset.csv'
 df = pd.read_csv(FilePath)
 
 # data_analysis(df)
 df = extract_feature(df, 15)
 
-X = df.drop(['Average User Rating'], axis=1)
-Y = df['Average User Rating']
+X = df.drop(['Rate'], axis=1)
+Y = df['Rate']
 X = preProcessing(X)
 
 X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.20, shuffle=False)
+# X_train = preProcessing(X_train)
+# X_test = preProcessing(X_test)
 
-correlationDataSet = X_train.copy()
-correlationDataSet['Average User Rating'] = Y_train
-top_features = correlation(correlationDataSet)
+lr = LogisticRegression(max_iter=10)
+rfe = RFE(lr, n_features_to_select=10)
+rfe.fit(X_train, Y_train)
+top_features = X_train.columns[rfe.support_]
 
-X_train = X_train[top_features]
-X_test = X_test[top_features]
+# evaluate Decision Tree Classifier
+DecisionTreeModel(X_train[top_features], Y_train, X_test[top_features], Y_test)
 
-linearRegressionModel(X_train['Current Version Release Date Year'], Y_train,
-                      X_test['Current Version Release Date Year'], Y_test, 'u2022')
-
-columns_list = ['Original Release Date Year', 'Current Version Release Date Year', 'u2022']
-X_train = X_train[columns_list]
-X_test = X_test[columns_list]
-polynomialRegression(X_train.iloc[:, :], Y_train, X_test.iloc[:, :], Y_test, 3, columns_list)
-
-LassoRegressionModel(0.001, X_train, X_test, Y_train, Y_test, columns_list)
-
-X.to_csv(r'newGameDataset.csv', index=False)
