@@ -2,20 +2,17 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.linear_model import Lasso, LinearRegression, LogisticRegression
+from sklearn.linear_model import Lasso
 from pandas.plotting import scatter_matrix
-from sklearn import linear_model, metrics, pipeline
+from sklearn import linear_model, metrics
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import r2_score, accuracy_score
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler, PolynomialFeatures, StandardScaler
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.feature_selection import RFE
-from collections import Counter
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import r2_score
+from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
+from sklearn.model_selection import train_test_split
 
 
-def Feature_Encoder(X, cols):
+
+def FeatureEncoder(X, cols):
     for c in cols:
         lbl = LabelEncoder()
         lbl.fit(list(X[c].values))
@@ -23,17 +20,19 @@ def Feature_Encoder(X, cols):
     return X
 
 
-def preProcessing(X):
+def XPreprocessing(X):
     # removing + symbol in Age Rating column
     X['Age Rating'] = X['Age Rating'].map(lambda x: x.rstrip('+').lstrip(' '))
 
     # split month column from date
     X['Original Release Date Month'] = pd.to_datetime(X['Original Release Date'], format='%d/%m/%Y').dt.month
-    X['Current Version Release Date Month'] = pd.to_datetime(X['Current Version Release Date'], format='%d/%m/%Y').dt.month
+    X['Current Version Release Date Month'] = pd.to_datetime(X['Current Version Release Date'],
+                                                             format='%d/%m/%Y').dt.month
 
     # split year column from date
     X['Original Release Date Year'] = pd.to_datetime(X['Original Release Date'], format='%d/%m/%Y').dt.year
-    X['Current Version Release Date Year'] = pd.to_datetime(X['Current Version Release Date'], format='%d/%m/%Y').dt.year
+    X['Current Version Release Date Year'] = pd.to_datetime(X['Current Version Release Date'],
+                                                            format='%d/%m/%Y').dt.year
 
     # split day column from date
     X['Original Release Date Day'] = pd.to_datetime(X['Original Release Date'], format='%d/%m/%Y').dt.day
@@ -44,26 +43,28 @@ def preProcessing(X):
         ['URL', 'Name', 'ID', 'Subtitle', 'Icon URL', 'In-app Purchases', 'Description', 'Developer', 'Primary Genre',
          'Original Release Date', 'Current Version Release Date', 'com'], axis=1)
 
+    return X
+
+
+def Preprocessing(X):
     # encoding
-    X = splitMultipleData(X, 'Languages', ', ', 100)
-    X = splitMultipleData(X, 'Genres', ', ', 100)
+    X = SplitMultipleData(X, 'Languages', ', ', languages_list)
+    X = SplitMultipleData(X, 'Genres', ', ', genres_list)
     for col in X.columns:
         X[col] = pd.to_numeric(X[col])
 
     # scaling
-    Scaled_X = featureScaling(X, -1, 1)
+    Scaled_X = FeatureScaling(X, -1, 1)
     X = pd.DataFrame.from_records(Scaled_X, columns=X.columns)
 
-    # dropping these 2 columns as the have the same values in every row
-    X = X.drop(['Games', 'Strategy'], axis=1)
+    # filling columns as the have the NaN values in every row
+    X = X.fillna(0)
     return X
 
 
-def correlation(corrData):
+def Correlation(corrData):
     corr = corrData.corr()
-    print(corrData['Rate'])
-    return
-    top_feature = corr.index[abs(corr['Rate']) >= 0.05]
+    top_feature = corr.index[abs(corr['Average User Rating']) >= 0.05]
     plt.subplots(figsize=(12, 8))
     top_corr = corrData[top_feature].corr()
     sns.heatmap(top_corr, annot=True)
@@ -73,7 +74,7 @@ def correlation(corrData):
     return top_feature
 
 
-def featureScaling(X, a, b):
+def FeatureScaling(X, a, b):
     X = np.array(X)
     Normalized_X = np.zeros((X.shape[0], X.shape[1]))
     for i in range(X.shape[1]):
@@ -81,22 +82,18 @@ def featureScaling(X, a, b):
     return Normalized_X
 
 
-def splitMultipleData(df, column, spliter, numberOfColumns):
-    # get the top languages
-    top_languages = df[column].str.split(spliter, expand=True).stack().value_counts().head(
-        numberOfColumns).index.tolist()
-
+def SplitMultipleData(df, column, spliter, splitted_list):
     # create a new DataFrame with columns for each language
-    df_encoded = pd.DataFrame(columns=top_languages)
+    df_encoded = pd.DataFrame(columns=splitted_list)
 
     # encode each row
     for i, row in df.iterrows():
         languages = row[column]
         if pd.isna(languages):
-            encoding = [0] * len(top_languages)
+            encoding = [0] * len(splitted_list)
         else:
             languages = languages.split(spliter)
-            encoding = [1 if language in languages else 0 for language in top_languages]
+            encoding = [1 if language in languages else 0 for language in splitted_list]
         df_encoded.loc[i] = encoding
 
     # merge the original dataframe with the encoded dataframe
@@ -108,13 +105,20 @@ def splitMultipleData(df, column, spliter, numberOfColumns):
     return df_final
 
 
-def linearRegressionModel(X_train, Y_train, X_test, Y_test, first_column_name):
+def GenerateMultipleDataList(df_column, splitter):
+    # get the top languages
+    splitted_list = df_column.str.split(splitter, expand=True).stack().value_counts().head(
+        100).index.tolist()
+    return splitted_list
+
+
+def LinearRegressionModel(X_train, Y_train, X_test, Y_test, first_column_name):
     model = linear_model.LinearRegression()
     X_train = np.expand_dims(X_train, axis=1)
     Y_train = np.expand_dims(Y_train, axis=1)
     X_test = np.expand_dims(X_test, axis=1)
     Y_test = np.expand_dims(Y_test, axis=1)
-  
+
     model.fit(X_train, Y_train)  # Fit method is used for fitting your training data into the model
     Y_Predict_test = model.predict(X_test)
     Y_Predict_train = model.predict(X_train)
@@ -126,11 +130,12 @@ def linearRegressionModel(X_train, Y_train, X_test, Y_test, first_column_name):
     plt.title('Linear Regression')
     plt.show()
 
-    print('Mean Square Error: ', metrics.mean_squared_error(Y_test, Y_Predict_test))
-    print('R2 score: ', r2_score(Y_test, Y_Predict_test))
+    print('Mean Square Error For Linear Regression : ', metrics.mean_squared_error(Y_test, Y_Predict_test))
+    print('R2 score For Linear Regression  : ', r2_score(Y_test, Y_Predict_test))
     return
 
-def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list):
+
+def PolynomialRegressionModel(X_train, Y_train, X_test, Y_test, degree, columns_list):
     poly_features = PolynomialFeatures(degree=degree)
     # transforms the existing features to higher degree features.
     X_train_poly = poly_features.fit_transform(X_train)
@@ -148,8 +153,8 @@ def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list)
     # calculate and print metrics
     mse = metrics.mean_squared_error(Y_test, ypred_test)
     r2 = r2_score(Y_test, ypred_test)
-    print('Mean Square Error: ', mse)
-    print('R2 score: ', r2)
+    print('Mean Square Error For Polynomial Regression : ', mse)
+    print('R2 score For Polynomial Regression : ', r2)
 
     # plot the regression line
     for col in columns_list:
@@ -160,7 +165,9 @@ def polynomialRegression(X_train, Y_train, X_test, Y_test, degree, columns_list)
     plt.xlabel('Features')
     plt.ylabel('Average Rate')
     plt.show()
+
     return
+
 
 def LassoRegressionModel(Alpha, X_train, X_test, Y_train, Y_test, feature_names):
     # create a Lasso model
@@ -174,8 +181,8 @@ def LassoRegressionModel(Alpha, X_train, X_test, Y_train, Y_test, feature_names)
     y_pred = lasso.predict(X_test)
     mse = metrics.mean_squared_error(Y_test, y_pred)
     r2 = metrics.r2_score(Y_test, y_pred)
-    print('Mean Square Error: ', mse)
-    print('R2 score: ', r2)
+    print('Mean Square Error For Lasso Regression : ', mse)
+    print('R2 score For Lasso Regression : ', r2)
 
     # plot predicted vs true values for multiple features
     fig, axs = plt.subplots(1, len(feature_names), figsize=(15, 10))
@@ -189,8 +196,9 @@ def LassoRegressionModel(Alpha, X_train, X_test, Y_train, Y_test, feature_names)
         ax.legend()
 
     plt.show()
-  
-def data_analysis(df):
+
+
+def DataAnalysis(df):
     print(df.head())
 
     # Display number of rows and columns
@@ -226,7 +234,7 @@ def data_analysis(df):
     return
 
 
-def extract_feature(df, no_max_features):
+def ExtractFeature(df, no_max_features):
     # Create a TF-IDF vectorized
     vectorized = TfidfVectorizer(stop_words="english", max_features=no_max_features)
 
@@ -241,55 +249,41 @@ def extract_feature(df, no_max_features):
     df = pd.concat([df_features, df], axis=1)
     return df
 
-def DecisionTreeModel(X_train, Y_train, X_test, Y_test):
-    # Define the parameter grid
-    param_grid = {
-        'criterion': ['gini', 'entropy'],
-        'max_depth': [None, 5, 10, 15, 20],
-        'min_samples_split': [2, 3, 4, 5, 10],
-        'min_samples_leaf': [1, 2, 3, 4, 5],
-        'max_features': [None, 'sqrt', 'log2']
-    }
 
-    # Create a decision tree classifier
-    dt_classifier = DecisionTreeClassifier(random_state=42)
-
-    # Create a grid search object
-    grid_search = GridSearchCV(dt_classifier, param_grid=param_grid, cv=5)
-
-    # Fit the grid search object to the data
-    grid_search.fit(X_train, Y_train)
-    dt_classifier.fit(X_train, Y_train)
-    # Print the best hyperparameters
-    best_params = grid_search.best_params_
-    print("Best hyperparameters:", best_params)
-    # Predict on the test data using the best model
-    best_model = grid_search.best_estimator_
-    y_pred = best_model.predict(X_test)
-    # Evaluate the best model
-    print("Decision Tree Classifier accuracy:", accuracy_score(Y_test, y_pred))
-    
-    
 np.seterr(invalid='ignore')
-FilePath = 'games-classification-dataset.csv'
+FilePath = 'games-regression-dataset.csv'
 df = pd.read_csv(FilePath)
 
 # data_analysis(df)
-df = extract_feature(df, 15)
+df = ExtractFeature(df, 15)
 
-X = df.drop(['Rate'], axis=1)
-Y = df['Rate']
-X = preProcessing(X)
+X = df.drop(['Average User Rating'], axis=1)
+Y = df['Average User Rating']
+X = XPreprocessing(X)
+
+languages_list = GenerateMultipleDataList(X['Languages'], ', ')
+genres_list = GenerateMultipleDataList(X['Genres'], ', ')
 
 X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.20, shuffle=False)
-# X_train = preProcessing(X_train)
-# X_test = preProcessing(X_test)
 
-lr = LogisticRegression(max_iter=10)
-rfe = RFE(lr, n_features_to_select=10)
-rfe.fit(X_train, Y_train)
-top_features = X_train.columns[rfe.support_]
+X_train = Preprocessing(X_train)
+X_test = Preprocessing(X_test)
 
-# evaluate Decision Tree Classifier
-DecisionTreeModel(X_train[top_features], Y_train, X_test[top_features], Y_test)
+correlationDataSet = X_train.copy()
+correlationDataSet['Average User Rating'] = Y_train
+top_features = Correlation(correlationDataSet)
 
+X_train = X_train[top_features]
+X_test = X_test[top_features]
+
+LinearRegressionModel(X_train['Current Version Release Date Year'], Y_train,
+                      X_test['Current Version Release Date Year'], Y_test, 'u2022')
+
+columns_list = ['Original Release Date Year', 'Current Version Release Date Year', 'u2022']
+X_train = X_train[columns_list]
+X_test = X_test[columns_list]
+PolynomialRegressionModel(X_train.iloc[:, :], Y_train, X_test.iloc[:, :], Y_test, 3, columns_list)
+
+LassoRegressionModel(0.001, X_train, X_test, Y_train, Y_test, columns_list)
+
+X.to_csv(r'newGameDataset.csv', index=False)
