@@ -8,9 +8,19 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.feature_selection import RFE
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
+from sklearn import svm
+
+import seaborn as sns
+from matplotlib.colors import ListedColormap
+import random
+import time
+from sklearn.metrics import accuracy_score
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.inspection import permutation_importance
 
 
 def FeatureEncoder(X, cols):
@@ -153,11 +163,34 @@ def ExtractFeature(df, no_max_features):
     return df
 
 
+def generate_random_color():
+    # Generate random values for the RGB components
+    red = random.uniform(0, 1)
+    green = random.uniform(0, 1)
+    blue = random.uniform(0, 1)
+
+    # Return the RGB values as a tuple
+    return (red, green, blue)
+
+
+def BarCharForEachModel(importances, X, title):
+    print()
+    # Create bar chart
+    plt.bar(range(X.shape[1]), importances)
+    plt.xticks(range(X.shape[1]), X.columns.tolist(), rotation='vertical')
+    plt.xlabel('Features')
+    plt.ylabel('Importance')
+    plt.title(title)
+    # plt.ylim([0, 0.25])
+    plt.show()
+    print()
+
+
 def DecisionTreeModel(X_train, Y_train, X_test, Y_test):
     # Define the parameter grid
     param_grid = {
         'criterion': ['gini'],
-        'max_depth': [None, 5, 10, 15, 20],
+        'max_depth': [None, 5, 10, 15],
         'min_samples_split': [2],
         'min_samples_leaf': [3],
         'max_features': ['sqrt']
@@ -172,14 +205,40 @@ def DecisionTreeModel(X_train, Y_train, X_test, Y_test):
     # Fit the grid search object to the data
     grid_search.fit(X_train, Y_train)
     dt_classifier.fit(X_train, Y_train)
-    # Print the best hyperparameters
+    # get the best hyperparameters
     best_params = grid_search.best_params_
-    print("Best hyperparameters for Decision Tree Classifier: ", best_params)
+
     # Predict on the test data using the best model
     best_model = grid_search.best_estimator_
     y_pred = best_model.predict(X_test)
+
+    # Visualize the decision tree model
+    fig, ax = plt.subplots(figsize=(5, 5))
+    plot_tree(best_model, ax=ax, feature_names=X_train.columns, class_names=Y_train.unique(),
+              filled=True, rounded=True, max_depth=best_params['max_depth'])
+    plt.title("Decision Tree Model")
+    plt.show()
+
+    # Visualize Bar Char
+    # BarCharForEachModel(best_model.feature_importances_, X_train, 'Decision Tree Feature Importances')
+
     # Evaluate the best model
-    print("Decision Tree Classifier accuracy: ", accuracy_score(Y_test, y_pred))
+    print("Best hyperparameters for Decision Tree Classifier: ", best_params)
+    accuracy = accuracy_score(Y_test, y_pred)
+    print("Decision Tree Classifier accuracy: ", accuracy, "\n")
+
+    startTrain = time.time()
+    prediction = best_model.predict(X_train)
+    endTrain = time.time()
+    total_training_time = endTrain - startTrain
+
+    start_test = time.time()
+    prediction = best_model.predict(X_test)
+    end_test = time.time()
+    total_testing_time = end_test - start_test
+
+    BarCharParameters = [accuracy, total_training_time, total_testing_time]
+    return BarCharParameters
 
 
 def KNNModel(X_train, Y_train, X_test, Y_test):
@@ -199,14 +258,67 @@ def KNNModel(X_train, Y_train, X_test, Y_test):
     # Fit the grid search object to the data
     grid_search.fit(X_train, Y_train)
     KNN_classifier.fit(X_train, Y_train)
-    # Print the best hyperparameters
+    # get the best hyperparameters
     best_params = grid_search.best_params_
-    print("Best hyperparameters for K-Nearest Neighbors Classifier: ", best_params)
+
     # Predict on the test data using the best model
     best_model = grid_search.best_estimator_
+    best_model.fit(X_train, Y_train)
+
     y_pred = best_model.predict(X_test)
+
+    # Visualize the KNN model
+    if X_train.shape[1] == 2:
+        # If the data is already 2-dimensional, use the scatter plot with random colors
+        colors = [generate_random_color() for _ in range(len(Y_train))]
+        plt.scatter(X_train[:, 0], X_train[:, 1], c=colors, edgecolors='k')
+        plt.title("K-Nearest Neighbors Scatter Plot")
+        plt.xlabel("Feature 1")
+        plt.ylabel("Feature 2")
+        plt.show()
+    else:
+        if X_train.shape[1] >= 50:
+            # If the data has high dimensionality, use PCA for dimensionality reduction
+            reducer = PCA(n_components=2)
+        else:
+            # If the data has relatively low dimensionality, use t-SNE for dimensionality reduction
+            reducer = TSNE(n_components=2)
+
+    X_train_reduced = reducer.fit_transform(X_train)
+
+    # Generate random colors for the scatter plot
+    colors = [generate_random_color() for _ in range(len(Y_train))]
+
+    # Plot the reduced data using scatter plot with random colors
+    plt.scatter(X_train_reduced[:, 0], X_train_reduced[:, 1], c=colors, edgecolors='k')
+    plt.title("KNN Scatter Plot (Reduced Dimensionality)")
+    plt.xlabel("Feature 1")
+    plt.ylabel("Feature 2")
+    plt.show()
+
+    # Visualize Bar Char
+    perm_importance = permutation_importance(best_model, X_test, Y_test, n_repeats=10, random_state=42)
+    # Get feature importance scores
+    importance_scores = perm_importance.importances_mean
+    BarCharForEachModel(importance_scores, X_train, 'KNN Feature Importances')
+
     # Evaluate the best model
-    print("K-Nearest Neighbors Classifier accuracy: ", accuracy_score(Y_test, y_pred))
+    print("Best hyperparameters for K-Nearest Neighbors Classifier: ", best_params)
+    accuracy = accuracy_score(Y_test, y_pred)
+    print("K-Nearest Neighbors Classifier accuracy: ", accuracy, "\n")
+
+    startTrain = time.time()
+    prediction = best_model.predict(X_train)
+    endTrain = time.time()
+    total_training_time = endTrain - startTrain
+
+    start_test = time.time()
+    prediction = best_model.predict(X_test)
+    end_test = time.time()
+    total_testing_time = end_test - start_test
+
+    BarCharParameters = [accuracy, total_training_time, total_testing_time]
+    return BarCharParameters
 
 
 def SVMModel(X_train, Y_train, X_test, Y_test):
@@ -226,14 +338,92 @@ def SVMModel(X_train, Y_train, X_test, Y_test):
     # Fit the grid search object to the data
     grid_search.fit(X_train, Y_train)
     SVM_classifier.fit(X_train, Y_train)
-    # Print the best hyperparameters
+    # get the best hyperparameters
     best_params = grid_search.best_params_
-    print("Best hyperparameters for Support Vector Machines Classifier: ", best_params)
+
     # Predict on the test data using the best model
     best_model = grid_search.best_estimator_
     y_pred = best_model.predict(X_test)
+
+    startTrain = time.time()
+    prediction = best_model.predict(X_train)
+    endTrain = time.time()
+    total_training_time = endTrain - startTrain
+
+    start_test = time.time()
+    prediction = best_model.predict(X_test)
+    end_test = time.time()
+    total_testing_time = end_test - start_test
+
+    # Visualize the SVM model
+    pca = PCA(n_components=2)
+    X_pca = pca.fit_transform(X_train)
+    # tsne = TSNE(n_components=2)
+    # X_tsne = tsne.fit_transform(X_train)
+
+    label_encoder = LabelEncoder()
+    y_train_encoded = label_encoder.fit_transform(Y_train)
+
+    # Fit the SVM classifier on reduced data
+    best_model.fit(X_pca, y_train_encoded)  # or X_tsne if using t-SNE
+    plot_decision_regions(X_pca, y_train_encoded, best_model)
+
+    # Visualize Bar Char
+
     # Evaluate the best model
-    print("Support Vector Machines Classifier accuracy: ", accuracy_score(Y_test, y_pred))
+    print("Best hyperparameters for Support Vector Machines Classifier: ", best_params)
+    accuracy = accuracy_score(Y_test, y_pred)
+    print("Support Vector Machines Classifier accuracy: ", accuracy, "\n")
+
+    BarCharParameters = [accuracy, total_training_time, total_testing_time]
+    return BarCharParameters
+
+
+def plot_decision_regions(X, y, classifier, resolution=0.02):
+    markers = ('s', 'x', 'o', '^', 'v')
+    colors = ('red', 'blue', 'lightgreen', 'gray', 'cyan')
+    cmap = ListedColormap(colors[:len(np.unique(y))])
+
+    # Create a mesh grid of feature values
+    x1_min, x1_max = X[:, 0].min() - 1, X[:, 0].max() + 1
+    x2_min, x2_max = X[:, 1].min() - 1, X[:, 1].max() + 1
+    xx1, xx2 = np.meshgrid(np.arange(x1_min, x1_max, resolution),
+                           np.arange(x2_min, x2_max, resolution))
+
+    # Predict the class labels for each point in the mesh grid
+    Z = classifier.predict(np.array([xx1.ravel(), xx2.ravel()]).T)
+    Z = Z.reshape(xx1.shape)
+
+    # Plot the decision regions
+    plt.contourf(xx1, xx2, Z, alpha=0.3, cmap=cmap)
+    plt.xlim(xx1.min(), xx1.max())
+    plt.ylim(xx2.min(), xx2.max())
+
+    # Plot the class samples
+    for idx, cl in enumerate(np.unique(y)):
+        plt.scatter(x=X[y == cl, 0],
+                    y=X[y == cl, 1],
+                    alpha=0.8,
+                    color=cmap(idx),
+                    marker=markers[idx],
+                    label=cl)
+
+    plt.xlabel('Feature 1')
+    plt.ylabel('Feature 2')
+    plt.legend()
+    plt.title('SVM Model (Reduced Dimensionality)')
+
+    plt.show()
+
+
+def BarChar(title, values):
+    # Create bar chart
+    plt.bar(['Decision Tree', 'KNN', 'SVM'], values)
+    plt.ylim([0.0, 1.0])  # rescale the y-axis to go from 0 to 1
+    plt.xlabel('Models')
+    plt.title(title)
+    plt.show()
+    print("\n")
 
 
 np.seterr(invalid='ignore')
@@ -260,11 +450,26 @@ rfe = RFE(lr, n_features_to_select=10)
 rfe.fit(X_train, Y_train)
 top_features = X_train.columns[rfe.support_]
 
+BarCharAllParameters = []
 # evaluate Decision Tree Classifier
-DecisionTreeModel(X_train[top_features], Y_train, X_test[top_features], Y_test)
+BarCharAllParameters.append(DecisionTreeModel(X_train[top_features], Y_train, X_test[top_features], Y_test))
 
 # evaluate KNN Classifier
-KNNModel(X_train[top_features], Y_train, X_test[top_features], Y_test)
+BarCharAllParameters.append(KNNModel(X_train[top_features], Y_train, X_test[top_features], Y_test))
 
 # evaluate SVM Classifier
-SVMModel(X_train[top_features], Y_train, X_test[top_features], Y_test)
+BarCharAllParameters.append(SVMModel(X_train[top_features], Y_train, X_test[top_features], Y_test))
+
+columnValues = [0.0, 0.0, 0.0]
+
+for rowIndex in range(3):
+    columnValues[rowIndex] = BarCharAllParameters[rowIndex][0]
+BarChar('Accuracy', columnValues)
+
+for rowIndex in range(3):
+    columnValues[rowIndex] = BarCharAllParameters[rowIndex][1]
+BarChar('Total Training Time', columnValues)
+
+for rowIndex in range(3):
+    columnValues[rowIndex] = BarCharAllParameters[rowIndex][2]
+BarChar('Total Testing Time', columnValues)
